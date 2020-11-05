@@ -73,15 +73,24 @@ contract uniLockFactory is uniLock {
     using Address for address;
     using SafeMath for uint;
     address[] public campaigns;
-    address toFee;
-    uint fee;
-    address factory_owner;
+    address public toFee;
+    uint public fee;
+    address public factory_owner;
+    address public unl_address;
+    address public uni_router;
+
+    uint balance_required;
     bool active;
+    
     event campaignCreated(address campaign_address);
-    constructor() public {
+    constructor(address _UNL,uint min_balance, uint _fee,address _uniRouter) public {
         factory_owner = msg.sender;
         toFee = msg.sender;
         active = true;
+        unl_address = _UNL;
+        balance_required = min_balance;
+        fee = _fee;
+        uni_router = _uniRouter;
     }
     modifier only_factory_Owner(){
         require(factory_owner == msg.sender,'You are not the owner');
@@ -89,18 +98,19 @@ contract uniLockFactory is uniLock {
     }
     //   1 ETH = 1 XYZ (_pool_rate = 1e18) <=> 1 ETH = 10 XYZ (_pool_rate = 1e19) <=> XYZ (decimals = 18)
     function createCampaign(uint _softCap,uint _hardCap,uint _start_date,uint _end_date,uint _rate,uint _min_allowed,uint _max_allowed,address _token,uint _pool_rate,uint _lock_duration) public returns (address campaign_address){
+     require(IERC20(address(unl_address)).balanceOf(msg.sender) >= balance_required,"You don't have the minimum UNL tokens required to launch a campaign");
      require(active,'Factory is not active');
      require(_softCap < _hardCap,"Error :  soft cap can't be higher than hard cap" );
      require(_start_date < _end_date ,"Error :  start date can't be higher than end date " );
      require(block.timestamp < _end_date ,"Error :  end date can't be higher than current date ");
      require(_min_allowed < _hardCap,"Error :  minimum allowed can't be higher than hard cap " );
      require(_rate != 0,"rate can't be null");
-     bytes memory bytecode = type(PreLock).creationCode;
+     bytes memory bytecode = type(uniLock).creationCode;
      bytes32 salt = keccak256(abi.encodePacked(_token, msg.sender));
      assembly {
             campaign_address := create2(0, add(bytecode, 32), mload(bytecode), salt)
      }
-     PreLock(campaign_address).initilaize(_softCap,_hardCap,_start_date,_end_date,_rate,_min_allowed,_max_allowed,_token,msg.sender,_pool_rate,_lock_duration);
+     uniLock(campaign_address).initilaize(_softCap,_hardCap,_start_date,_end_date,_rate,_min_allowed,_max_allowed,_token,msg.sender,_pool_rate,_lock_duration);
      campaigns.push(campaign_address);
      require(transferToCampaign(_hardCap,_rate,_pool_rate,_token,campaign_address),"unable to transfer funds");
      emit campaignCreated(campaign_address);
@@ -121,10 +131,20 @@ contract uniLockFactory is uniLock {
     function getCampaigns() public view returns (address[] memory){
         return campaigns;
     }
-    function trigger() public returns(bool){
+    function trigger() public only_factory_Owner returns(bool){
         active = !active;
         return true;
     } 
+    function changeBalanceRequired(uint _amount) public only_factory_Owner returns(bool){
+        balance_required = _amount;
+        return true;
+    }
+    function changeUniRouter(address _address) public only_factory_Owner returns (address){
+        uni_router = _address;
+    }
+    function getToFee() public view returns (address){
+        return toFee;
+    }
     
  
 
