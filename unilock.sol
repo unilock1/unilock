@@ -6,6 +6,7 @@
 
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
+import './uniLockFactory.sol';
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP.
  */
@@ -424,7 +425,7 @@ abstract contract Context {
 
 
 
- contract PreLock {
+ contract uniLock {
     using Address for address;
     using SafeMath for uint;
     address factory;
@@ -443,7 +444,6 @@ abstract contract Context {
     uint public collected; // collected ETH
     uint public pool_rate; // uniswap liquidity pool rate  1 ETH = 1 XYZ (rate = 1e18) <=> 1 ETH = 10 XYZ (rate = 1e19)
     uint public lock_duration; // duration wished to keep the LP tokens locked
-    address payable public feeTo = 0x3c1b019b029BB3d4B9B182D8A4f984C57826B164;
 
 
     constructor() public{
@@ -511,10 +511,10 @@ abstract contract Context {
     }
     
     function addLiquidity() internal returns(bool){
-        uint liqidityAmount = collected.mul(997).div(1000);
-        IERC20(address(token)).approve(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D),(hardCap.mul(rate)).div(1e18));
-        IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D)).addLiquidityETH.value(liqidityAmount)(address(token),(liqidityAmount.mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
-        feeTo.transfer(collected.sub(liqidityAmount));
+        uint liqidityAmount = collected.mul(uniLockFactory(factory).fee()).div(1000);
+        IERC20(address(token)).approve(address(uniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
+        IUniswapV2Router02(address(uniLockFactory(factory).uni_router())).addLiquidityETH.value(liqidityAmount)(address(token),(liqidityAmount.mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+        payable(uniLockFactory(factory).toFee()).transfer(collected.sub(liqidityAmount));
         return true;
            /*return IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).createPair(address(token),address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE));*/
     }
@@ -533,9 +533,9 @@ abstract contract Context {
     function withdrawFunds() public returns(uint){
         require(failed(),"campaign didn't fail");
         require(participant[msg.sender] >0 ,"You didn't participate in the campaign");
-        uint withdrawAmount = participant[msg.sender].mul(997).div(1000);
+        uint withdrawAmount = participant[msg.sender].mul(uniLockFactory(factory).fee()).div(1000);
         (msg.sender).transfer(withdrawAmount);
-        feeTo.transfer(participant[msg.sender].sub(withdrawAmount));
+        payable(uniLockFactory(factory).toFee()).transfer(participant[msg.sender].sub(withdrawAmount));
         participant[msg.sender] = 0;
 
     }
