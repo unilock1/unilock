@@ -68,25 +68,21 @@ import './unilock.sol';
  */
 
 
-
-contract uniLockFactory is uniLock {
+contract uniLockFactory  {
     using Address for address;
     using SafeMath for uint;
     address[] public campaigns;
     address public toFee;
     uint public fee;
-    address public factory_owner;
+    address factory_owner;
     address public unl_address;
     address public uni_router;
-
     uint balance_required;
-    bool active;
+
     
-    event campaignCreated(address campaign_address);
-    constructor(address _UNL,uint min_balance, uint _fee,address _uniRouter) public {
+    constructor(address _UNL,uint min_balance,uint _fee,address _uniRouter) public {
         factory_owner = msg.sender;
         toFee = msg.sender;
-        active = true;
         unl_address = _UNL;
         balance_required = min_balance;
         fee = _fee;
@@ -97,54 +93,40 @@ contract uniLockFactory is uniLock {
         _;
     }
     //   1 ETH = 1 XYZ (_pool_rate = 1e18) <=> 1 ETH = 10 XYZ (_pool_rate = 1e19) <=> XYZ (decimals = 18)
-    function createCampaign(uint _softCap,uint _hardCap,uint _start_date,uint _end_date,uint _rate,uint _min_allowed,uint _max_allowed,address _token,uint _pool_rate,uint _lock_duration) public returns (address campaign_address){
-     require(IERC20(address(unl_address)).balanceOf(msg.sender) >= balance_required,"You don't have the minimum UNL tokens required to launch a campaign");
-     require(active,'Factory is not active');
-     require(_softCap < _hardCap,"Error :  soft cap can't be higher than hard cap" );
-     require(_start_date < _end_date ,"Error :  start date can't be higher than end date " );
-     require(block.timestamp < _end_date ,"Error :  end date can't be higher than current date ");
-     require(_min_allowed < _hardCap,"Error :  minimum allowed can't be higher than hard cap " );
-     require(_rate != 0,"rate can't be null");
+   // _data = _softCap,_hardCap,_start_date, _end_date,_rate,_min_allowed,_max_allowed
+    function createCampaign(uint[] memory _data,address _token,uint _pool_rate,uint _lock_duration,uint _uniswap_rate) public returns (address campaign_address){
+     require(IERC20(address(unl_address)).balanceOf(msg.sender) >= uint(balance_required),"You don't have the minimum UNL tokens required to launch a campaign");
+     require(_data[0] < _data[1],"Error :  soft cap can't be higher than hard cap" );
+     require(_data[2] < _data[3] ,"Error :  start date can't be higher than end date " );
+     require(block.timestamp < _data[3] ,"Error :  end date can't be higher than current date ");
+     require(_data[5] < _data[1],"Error :  minimum allowed can't be higher than hard cap " );
+     require(_data[4] != 0,"rate can't be null");
+     require(_uniswap_rate >= 0 && _uniswap_rate <= 1000);
      bytes memory bytecode = type(uniLock).creationCode;
      bytes32 salt = keccak256(abi.encodePacked(_token, msg.sender));
      assembly {
             campaign_address := create2(0, add(bytecode, 32), mload(bytecode), salt)
      }
-     uniLock(campaign_address).initilaize(_softCap,_hardCap,_start_date,_end_date,_rate,_min_allowed,_max_allowed,_token,msg.sender,_pool_rate,_lock_duration);
+     uniLock(campaign_address).initilaize(_data,_token,msg.sender,_pool_rate,_lock_duration,_uniswap_rate);
      campaigns.push(campaign_address);
-     require(transferToCampaign(_hardCap,_rate,_pool_rate,_token,campaign_address),"unable to transfer funds");
-     emit campaignCreated(campaign_address);
+     require(transferToCampaign(_data[1],_data[4],_pool_rate,_token,campaign_address),"unable to transfer funds");
+     return campaign_address;
     }
     function transferToCampaign(uint _hardCap,uint _rate, uint _pool_rate,address _token,address _campaign_address) internal returns(bool){
 
      require(IERC20(address(_token)).transferFrom(msg.sender,address(_campaign_address),(_hardCap.mul(_rate).div(1e18)).add(_hardCap.mul(_pool_rate).div(1e18))),"unable to transfer token amount to the campaign");
      return true;
     }
-    function changeFee(uint _fee) public only_factory_Owner returns(uint){
+   function changeConfig(uint _fee,address _to,uint _balance_required,address _uni_router,address _unl_address) public only_factory_Owner returns(uint){
         fee = _fee;
-        return fee;
-    }
-    function change_to_Fee(address _to) public only_factory_Owner returns(address){
         toFee = _to;
-        return toFee;
+        balance_required = _balance_required;
+        uni_router = _uni_router;
+        unl_address = _unl_address;
     }
-    function getCampaigns() public view returns (address[] memory){
-        return campaigns;
-    }
-    function trigger() public only_factory_Owner returns(bool){
-        active = !active;
-        return true;
-    } 
-    function changeBalanceRequired(uint _amount) public only_factory_Owner returns(bool){
-        balance_required = _amount;
-        return true;
-    }
-    function changeUniRouter(address _address) public only_factory_Owner returns (address){
-        uni_router = _address;
-    }
-    function getToFee() public view returns (address){
-        return toFee;
-    }
+
+
+ 
     
  
 
