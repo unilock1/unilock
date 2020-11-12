@@ -6,7 +6,6 @@
 
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
-import './uniLockFactory.sol';
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP.
  */
@@ -14,7 +13,6 @@ interface IERC20 {
     /**
      * @dev Returns the amount of tokens in existence.
      */
-    function totalSupply() external view returns (uint256);
 
     /**
      * @dev Returns the amount of tokens owned by `account`.
@@ -30,14 +28,7 @@ interface IERC20 {
      */
     function transfer(address recipient, uint256 amount) external returns (bool);
 
-    /**
-     * @dev Returns the remaining number of tokens that `spender` will be
-     * allowed to spend on behalf of `owner` through {transferFrom}. This is
-     * zero by default.
-     *
-     * This value changes when {approve} or {transferFrom} are called.
-     */
-    function allowance(address owner, address spender) external view returns (uint256);
+
 
     /**
      * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
@@ -215,26 +206,7 @@ library SafeMath {
      *
      * - The divisor cannot be zero.
      */
-    function mod(uint256 a, uint256 b) internal pure returns (uint256) {
-        return mod(a, b, "SafeMath: modulo by zero");
-    }
-
-    /**
-     * @dev Returns the remainder of dividing two unsigned integers. (unsigned integer modulo),
-     * Reverts with custom message when dividing by zero.
-     *
-     * Counterpart to Solidity's `%` operator. This function uses a `revert`
-     * opcode (which leaves remaining gas untouched) while Solidity uses an
-     * invalid opcode to revert (consuming all remaining gas).
-     *
-     * Requirements:
-     *
-     * - The divisor cannot be zero.
-     */
-    function mod(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
-        require(b != 0, errorMessage);
-        return a % b;
-    }
+   
 }
 
 /**
@@ -385,17 +357,17 @@ interface IUniswapV2Router02 {
   uint deadline
 ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
 }
+interface IUniLockFactory {
+    function fee() external view returns(uint);
+    function uni_router() external view returns(address);
+    function toFee() external view returns(uint);
 
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address payable) {
-        return msg.sender;
-    }
+    
 
-    function _msgData() internal view virtual returns (bytes memory) {
-        this; // silence state mutability warning without generating bytecode - see https://github.com/ethereum/solidity/issues/2691
-        return msg.data;
-    }
+    
 }
+
+
 
 
 /**
@@ -425,12 +397,11 @@ abstract contract Context {
 
 
 
- contract uniLock {
+ contract uniLock  {
     using Address for address;
     using SafeMath for uint;
     address factory;
     uint public locked = 0;
-    uint public burnt = 0;
     uint public unlock_date = 0;
     address public owner;
     address public token;
@@ -444,55 +415,50 @@ abstract contract Context {
     uint public collected; // collected ETH
     uint public pool_rate; // uniswap liquidity pool rate  1 ETH = 1 XYZ (rate = 1e18) <=> 1 ETH = 10 XYZ (rate = 1e19)
     uint public lock_duration; // duration wished to keep the LP tokens locked
-
+    uint public uniswap_rate;
 
     constructor() public{
         factory = msg.sender;
         
     }
    
-    event buyCompleted(uint,address,address);
-    event liquidityLocked(uint);
+
     
     
     
     mapping(address => uint) participant;
     
     // Initilaize  a new campaign (can only be triggered by the factory contract)
-    function initilaize(uint _softCap,uint _hardCap,uint _start_date,uint _end_date,uint _rate,uint _min_allowed,uint _max_allowed,address _token,address _owner_Address,uint _pool_rate,uint _lock_duration) external returns (uint){
+    function initilaize(uint[] calldata _data,address _token,address _owner_Address,uint _pool_rate,uint _lock_duration,uint _uniswap_rate) external returns (uint){
       require(msg.sender == factory,'You are not allowed to initialize a new Campaign');
       owner = _owner_Address; 
-      softCap = _softCap;
-      hardCap = _hardCap;
-      start_date = _start_date;
-      end_date = _end_date;
-      rate = _rate; 
-      min_allowed = _min_allowed;
-      max_allowed = _max_allowed;
+      softCap = _data[0];
+      hardCap = _data[1];
+      start_date = _data[2];
+      end_date = _data[3];
+      rate = _data[4]; 
+      min_allowed = _data[5];
+      max_allowed = _data[6];
       token = _token;
       pool_rate = _pool_rate;
       lock_duration = _lock_duration;
+      uniswap_rate = _uniswap_rate;
     }
     
     function buyTokens() public payable returns (uint){
         require(isLive(),'campaign is not live');
-        require((msg.value>= min_allowed)&& (msg.value<= max_allowed) && (msg.value <= getRemaining()),'The contract has insufficent funds or you are not allowed');
+        require((msg.value>= min_allowed)&& (getGivenAmount(msg.sender).add(msg.value) <= max_allowed) && (msg.value <= getRemaining()),'The contract has insufficent funds or you are not allowed');
         require(IERC20(address(token)).transfer(msg.sender,calculateAmount(msg.value)),"can't transfer");
         participant[msg.sender] = participant[msg.sender].add(msg.value);
         collected = (collected).add(msg.value);
-        emit buyCompleted(calculateAmount(msg.value),msg.sender,token);
-        
-       /* require((_amount >= min_allowed) && (_amount <= getRemaining()),'The contract has insufficent funds or you are not allowed');
-        
-        require(IERC20(address(token)).transfer(msg.sender,_amount));*/
+        return 1;
     }
     function unlock(address _LPT,uint _amount) public returns (bool){
-        require(locked == 1,'liquidity is not yet locked');
+        require(locked == 1 || failed(),'liquidity is not yet locked');
         require(block.timestamp >= unlock_date ,"can't receive LP tokens");
         require(msg.sender == owner,'You are not the owner');
         IERC20(address(_LPT)).transfer(msg.sender,_amount);
     }
-    
     
     // Add liquidity to uniswap and burn the remaining tokens, can be only executed when the campaign completes
     
@@ -506,17 +472,17 @@ abstract contract Context {
         IERC20(address(token)).transfer(address(0x000000000000000000000000000000000000dEaD),IERC20(address(token)).balanceOf(address(this)));
         unlock_date = (block.timestamp).add(lock_duration);
 
-        emit liquidityLocked((collected.mul(pool_rate)).div(1e18));
-        
+        return 1;
     }
     
     function addLiquidity() internal returns(bool){
-        uint liqidityAmount = collected.mul(uniLockFactory(factory).fee()).div(1000);
-        IERC20(address(token)).approve(address(uniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
-        IUniswapV2Router02(address(uniLockFactory(factory).uni_router())).addLiquidityETH.value(liqidityAmount)(address(token),(liqidityAmount.mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
-        payable(uniLockFactory(factory).toFee()).transfer(collected.sub(liqidityAmount));
+        uint campaign_amount = collected.mul(uint(IUniLockFactory(factory).fee())).div(1000);
+        IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
+        IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+        payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
+        payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
         return true;
-           /*return IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).createPair(address(token),address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE));*/
+          
     }
     
     // Check whether the campaign failed
@@ -533,9 +499,9 @@ abstract contract Context {
     function withdrawFunds() public returns(uint){
         require(failed(),"campaign didn't fail");
         require(participant[msg.sender] >0 ,"You didn't participate in the campaign");
-        uint withdrawAmount = participant[msg.sender].mul(uniLockFactory(factory).fee()).div(1000);
+        uint withdrawAmount = participant[msg.sender].mul(uint(IUniLockFactory(factory).fee())).div(1000);
         (msg.sender).transfer(withdrawAmount);
-        payable(uniLockFactory(factory).toFee()).transfer(participant[msg.sender].sub(withdrawAmount));
+        payable(IUniLockFactory(factory).toFee()).transfer(participant[msg.sender].sub(withdrawAmount));
         participant[msg.sender] = 0;
 
     }
@@ -561,10 +527,7 @@ abstract contract Context {
         return participant[_address];
     }
     
-    // Returns campaign infos
-   /* function getInfos() public view returns (Campaign memory){
-        return campaign;
-    }*/
+  
     
 
 
