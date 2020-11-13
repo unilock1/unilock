@@ -471,18 +471,18 @@ interface IUniLockFactory {
         locked = 1;
         IERC20(address(token)).transfer(address(0x000000000000000000000000000000000000dEaD),IERC20(address(token)).balanceOf(address(this)));
         unlock_date = (block.timestamp).add(lock_duration);
-
         return 1;
     }
     
     function addLiquidity() internal returns(bool){
         uint campaign_amount = collected.mul(uint(IUniLockFactory(factory).fee())).div(1000);
         IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
-        IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+        if(uniswap_rate > 0){
+                IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+        }
         payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
         payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
         return true;
-          
     }
     
     // Check whether the campaign failed
