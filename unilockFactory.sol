@@ -109,14 +109,20 @@ contract uniLockFactory  {
      }
      uniLock(campaign_address).initilaize(_data,_token,msg.sender,_pool_rate,_lock_duration,_uniswap_rate);
      campaigns.push(campaign_address);
-     require(transferToCampaign(_data[1],_data[4],_pool_rate,_token,campaign_address),"unable to transfer funds");
+     require(transferToCampaign(_data[1],_data[4],_pool_rate,_token,campaign_address,_uniswap_rate),"unable to transfer funds");
      return campaign_address;
     }
-    function transferToCampaign(uint _hardCap,uint _rate, uint _pool_rate,address _token,address _campaign_address) internal returns(bool){
-
-     require(IERC20(address(_token)).transferFrom(msg.sender,address(_campaign_address),(_hardCap.mul(_rate).div(1e18)).add(_hardCap.mul(_pool_rate).div(1e18))),"unable to transfer token amount to the campaign");
+    function transferToCampaign(uint _data1,uint _data4,uint _pool_rate,address _token,address _campaign_address,uint _uniswap_rate ) internal returns(bool){
+        require(ApproveTransferTo((_data1.mul(_data4).div(1e18)),_uniswap_rate,_data1,_token,_campaign_address,_pool_rate));
+/*     require(IERC20(address(_token)).transferFrom(msg.sender,address(_campaign_address),(_data1.mul(_data4).div(1e18)).add((_data1).mul(_pool_rate).div(1e18))),"unable to transfer token amount to the campaign");
+*/     return true;
+    }
+    function ApproveTransferTo(uint _data,uint _uniswap_rate,uint _data1,address _token,address _campaign_address,uint _pool_rate ) internal returns(bool){
+        
+    require(IERC20(address(_token)).transferFrom(msg.sender,address(_campaign_address),_data.add((_data1.mul(_uniswap_rate)).mul(_pool_rate).div(1e21))),"unable to transfer token amount to the campaign");
      return true;
     }
+    
    function changeConfig(uint _fee,address _to,uint _balance_required,address _uni_router,address _unl_address) public only_factory_Owner returns(uint){
         fee = _fee;
         toFee = _to;
