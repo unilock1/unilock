@@ -665,8 +665,6 @@ contract ERC20Detailed is IERC20 {
     }
 }
 
-// File: contracts/CovidToken.sol
-
 // solium-disable linebreak-style
 pragma solidity 0.5.10;
 
