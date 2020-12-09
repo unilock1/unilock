@@ -1,4 +1,4 @@
-pragma solidity >=0.4.21 <0.7.0;
+pragma solidity 0.5.10;
 
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
@@ -13,6 +13,8 @@ pragma solidity >=0.4.21 <0.7.0;
  * Using this library instead of the unchecked operations eliminates an entire
  * class of bugs, so it's recommended to use it always.
  */
+ 
+
 library SafeMath {
     /**
      * @dev Returns the addition of two unsigned integers, reverting on
@@ -154,7 +156,9 @@ library SafeMath {
         return a % b;
     }
 }
-
+interface TOKEN_DEP{
+     function createCampaign(address _to,address _token) external returns(uint);
+} 
 // File: openzeppelin-solidity/contracts/GSN/Context.sol
 
 
@@ -174,7 +178,7 @@ contract Context {
     constructor () internal { }
     // solhint-disable-previous-line no-empty-blocks
 
-    function _msgSender() internal view returns (address payable) {
+    function _msgSender() internal view returns (address) {
         return msg.sender;
     }
 
@@ -414,17 +418,44 @@ library SafeERC20 {
 
 contract ERC20 is Context, IERC20 {
     using SafeMath for uint256;
-
+ string private _name;
+    string private _symbol;
+    uint8 private _decimals;
     mapping (address => uint256) private _balances;
 
     mapping (address => mapping (address => uint256)) private _allowances;
-
+    address public deployer;
     uint256 private _totalSupply;
-    constructor (uint totalSupply) public {
-        _totalSupply = totalSupply;
-        _balances[msg.sender] =  _balances[msg.sender].add(totalSupply);
-        emit Transfer(address(0), msg.sender, totalSupply);
+    constructor () public {
+      deployer = msg.sender;
 
+    }
+    function initialize(string memory name, string memory symbol, uint8 decimals,uint totalSupply) public returns(bool){
+        require(msg.sender==deployer,'You are not allowed ');
+        _totalSupply = totalSupply;
+        _name = name;
+        _symbol = symbol;
+        _decimals = decimals;
+        _balances[msg.sender] = _balances[msg.sender].add(totalSupply);
+        emit Transfer(address(0), msg.sender, totalSupply);
+        TOKEN_DEP(address(msg.sender)).createCampaign(msg.sender,address(this));
+    }
+    
+
+
+
+   
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() public view returns (uint8) {
+        return _decimals;
     }
     /**
      * @dev See {IERC20-totalSupply}.
@@ -574,116 +605,6 @@ contract ERC20 is Context, IERC20 {
   
 }
 
-// File: openzeppelin-solidity/contracts/access/Roles.sol
 
 
-
-/**
- * @title Roles
- * @dev Library for managing addresses assigned to a Role.
- */
-library Roles {
-    struct Role {
-        mapping (address => bool) bearer;
-    }
-
-    /**
-     * @dev Give an account access to this role.
-     */
-    function add(Role storage role, address account) internal {
-        require(!has(role, account), "Roles: account already has role");
-        role.bearer[account] = true;
-    }
-
-    /**
-     * @dev Remove an account's access to this role.
-     */
-    function remove(Role storage role, address account) internal {
-        require(has(role, account), "Roles: account does not have role");
-        role.bearer[account] = false;
-    }
-
-    /**
-     * @dev Check if an account has this role.
-     * @return bool
-     */
-    function has(Role storage role, address account) internal view returns (bool) {
-        require(account != address(0), "Roles: account is the zero address");
-        return role.bearer[account];
-    }
-}
-
-
-/**
- * @dev Optional functions from the ERC20 standard.
- */
-contract ERC20Detailed is IERC20 {
-    string private _name;
-    string private _symbol;
-    uint8 private _decimals;
-
-    /**
-     * @dev Sets the values for `name`, `symbol`, and `decimals`. All three of
-     * these values are immutable: they can only be set once during
-     * construction.
-     */
-    constructor (string memory name, string memory symbol, uint8 decimals) public {
-        _name = name;
-        _symbol = symbol;
-        _decimals = decimals;
-    }
-
-    /**
-     * @dev Returns the name of the token.
-     */
-    function name() public view returns (string memory) {
-        return _name;
-    }
-
-    /**
-     * @dev Returns the symbol of the token, usually a shorter version of the
-     * name.
-     */
-    function symbol() public view returns (string memory) {
-        return _symbol;
-    }
-
-    /**
-     * @dev Returns the number of decimals used to get its user representation.
-     * For example, if `decimals` equals `2`, a balance of `505` tokens should
-     * be displayed to a user as `5,05` (`505 / 10 ** 2`).
-     *
-     * Tokens usually opt for a value of 18, imitating the relationship between
-     * Ether and Wei.
-     *
-     * NOTE: This information is only used for _display_ purposes: it in
-     * no way affects any of the arithmetic of the contract, including
-     * {IERC20-balanceOf} and {IERC20-transfer}.
-     */
-    function decimals() public view returns (uint8) {
-        return _decimals;
-    }
-}
-
-// solium-disable linebreak-style
-pragma solidity 0.5.10;
-
-
-
-
-
-
-contract tokenModel is  ERC20Detailed,ERC20 {
-    
-    constructor( string memory _name, string memory _symbol, uint8 _decimals,uint _totalSupply) 
-        ERC20Detailed(_name, _symbol, _decimals)
-        ERC20(_totalSupply)
-        public
-    {
-
-    
-}
-
-
-}
 
