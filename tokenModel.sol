@@ -438,7 +438,6 @@ contract ERC20 is Context, IERC20 {
         _decimals = decimals;
         _balances[msg.sender] = _balances[msg.sender].add(totalSupply);
         emit Transfer(address(0), msg.sender, totalSupply);
-        TOKEN_DEP(address(msg.sender)).createCampaign(msg.sender,address(this));
     }
     
 
