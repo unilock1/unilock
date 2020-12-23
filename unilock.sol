@@ -448,10 +448,15 @@ interface IUniLockFactory {
     function buyTokens() public payable returns (uint){
         require(isLive(),'campaign is not live');
         require((msg.value>= min_allowed)&& (getGivenAmount(msg.sender).add(msg.value) <= max_allowed) && (msg.value <= getRemaining()),'The contract has insufficent funds or you are not allowed');
-        require(IERC20(address(token)).transfer(msg.sender,calculateAmount(msg.value)),"can't transfer");
         participant[msg.sender] = participant[msg.sender].add(msg.value);
         collected = (collected).add(msg.value);
         return 1;
+    }
+    function withdrawTokens() public returns (uint){
+        require(locked == 1,'liquidity is not yet added');
+        require(IERC20(address(token)).transfer(msg.sender,calculateAmount(participant[msg.sender])),"can't transfer");
+        participant[msg.sender] = 0;
+
     }
     function unlock(address _LPT,uint _amount) public returns (bool){
         require(locked == 1 || failed(),'liquidity is not yet locked');
