@@ -460,7 +460,7 @@ interface IUniLockFactory {
     }
     function unlock(address _LPT,uint _amount) public returns (bool){
         require(locked == 1 || failed(),'liquidity is not yet locked');
-        require(_LPT != token,'You are not allowed to withdraw tokens');
+        require(address(_LPT) != address(token),'You are not allowed to withdraw tokens');
         require(block.timestamp >= unlock_date ,"can't receive LP tokens");
         require(msg.sender == owner,'You are not the owner');
         IERC20(address(_LPT)).transfer(msg.sender,_amount);
