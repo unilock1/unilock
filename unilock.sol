@@ -474,7 +474,6 @@ interface IUniLockFactory {
         require(softCap <= collected,"didn't reach soft cap");
         require(addLiquidity(),'error adding liquidity to uniswap');
         locked = 1;
-        IERC20(address(token)).transfer(address(0x000000000000000000000000000000000000dEaD),IERC20(address(token)).balanceOf(address(this)));
         unlock_date = (block.timestamp).add(lock_duration);
         return 1;
     }
