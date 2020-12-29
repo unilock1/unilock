@@ -357,6 +357,9 @@ interface IUniswapV2Router02 {
   uint deadline
 ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
 }
+interface IUniswapV2Factory {
+ function getPair(address tokenA, address tokenB) external view returns (address pair);
+}
 interface IUniLockFactory {
     function fee() external view returns(uint);
     function uni_router() external view returns(address);
@@ -416,7 +419,7 @@ interface IUniLockFactory {
     uint public pool_rate; // uniswap liquidity pool rate  1 ETH = 1 XYZ (rate = 1e18) <=> 1 ETH = 10 XYZ (rate = 1e19)
     uint public lock_duration; // duration wished to keep the LP tokens locked
     uint public uniswap_rate;
-
+    bool public doRefund = false;
     constructor() public{
         factory = msg.sender;
         
@@ -480,6 +483,7 @@ interface IUniLockFactory {
     }
     
     function addLiquidity() internal returns(bool){
+        if(IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0)){
         uint campaign_amount = collected.mul(uint(IUniLockFactory(factory).fee())).div(1000);
         IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
         if(uniswap_rate > 0){
@@ -487,6 +491,9 @@ interface IUniLockFactory {
         }
         payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
         payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
+        }else{
+            doRefund = true;
+        }
         return true;
     }
     
@@ -502,7 +509,7 @@ interface IUniLockFactory {
     
     // Allows Participants to withdraw funds when campaign fails
     function withdrawFunds() public returns(uint){
-        require(failed(),"campaign didn't fail");
+        require(failed() || doRefund,"campaign didn't fail");
         require(participant[msg.sender] >0 ,"You didn't participate in the campaign");
         uint withdrawAmount = participant[msg.sender].mul(uint(IUniLockFactory(factory).fee())).div(1000);
         (msg.sender).transfer(withdrawAmount);
