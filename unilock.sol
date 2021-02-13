@@ -363,6 +363,7 @@ interface IUniswapV2Factory {
 interface IUniLockFactory {
     function fee() external view returns(uint);
     function uni_router() external view returns(address);
+    function sushi_router() external view returns(address);
     function toFee() external view returns(uint);
 
     
@@ -419,6 +420,8 @@ interface IUniLockFactory {
     uint public pool_rate; // uniswap liquidity pool rate  1 ETH = 1 XYZ (rate = 1e18) <=> 1 ETH = 10 XYZ (rate = 1e19)
     uint public lock_duration; // duration wished to keep the LP tokens locked
     uint public uniswap_rate;
+    uint public rnAMM;
+
     bool public doRefund = false;
     constructor() public{
         factory = msg.sender;
@@ -432,7 +435,7 @@ interface IUniLockFactory {
     mapping(address => uint) participant;
     
     // Initilaize  a new campaign (can only be triggered by the factory contract)
-    function initilaize(uint[] calldata _data,address _token,address _owner_Address,uint _pool_rate,uint _lock_duration,uint _uniswap_rate) external returns (uint){
+    function initilaize(uint[] calldata _data,address _token,address _owner_Address,uint _pool_rate,uint _lock_duration,uint _uniswap_rate,uint _rnAMM) external returns (uint){
       require(msg.sender == factory,'You are not allowed to initialize a new Campaign');
       owner = _owner_Address; 
       softCap = _data[0];
@@ -446,6 +449,7 @@ interface IUniLockFactory {
       pool_rate = _pool_rate;
       lock_duration = _lock_duration;
       uniswap_rate = _uniswap_rate;
+      rnAMM = _rnAMM;
     }
     
     function buyTokens() public payable returns (uint){
@@ -483,8 +487,9 @@ interface IUniLockFactory {
     }
     
     function addLiquidity() internal returns(bool){
-        if(IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0)){
         uint campaign_amount = collected.mul(uint(IUniLockFactory(factory).fee())).div(1000);
+        if(rnAMM == 100){
+             if(IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0)){
         IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
         if(uniswap_rate > 0){
                 IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
@@ -494,6 +499,40 @@ interface IUniLockFactory {
         }else{
             doRefund = true;
         }
+        }else if(rnAMM == 0){
+             if(IUniswapV2Factory(address(0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0)){
+        IERC20(address(token)).approve(address(IUniLockFactory(factory).sushi_router()),(hardCap.mul(rate)).div(1e18));
+        if(uniswap_rate > 0){
+                IUniswapV2Router02(address(IUniLockFactory(factory).sushi_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+        }
+        payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
+        payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
+        }else{
+            doRefund = true;
+        }
+        }else{
+                if(IUniswapV2Factory(address(0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0) && IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0) ){
+                   IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
+                   IERC20(address(token)).approve(address(IUniLockFactory(factory).sushi_router()),(hardCap.mul(rate)).div(1e18));
+
+                   if(uniswap_rate > 0){
+                       uint total_liq = campaign_amount.mul(uniswap_rate).div(1000);
+                      IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : total_liq.mul(rnAMM).div(100)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+                      IUniswapV2Router02(address(IUniLockFactory(factory).sushi_router())).addLiquidityETH{value : total_liq.mul(uint(100).sub(rnAMM)).div(100)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+                    }
+                   payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
+                   payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
+                  
+                  
+                    
+                }else{
+                    doRefund = true;
+ 
+                }
+
+            
+        }
+       
         return true;
     }
     
