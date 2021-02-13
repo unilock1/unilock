@@ -56,6 +56,7 @@ interface IERC20 {
      * Emits a {Transfer} event.
      */
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+     function decimals() external  returns (uint8) ;
 
     /**
      * @dev Emitted when `value` tokens are moved from one account (`from`) to
@@ -347,29 +348,8 @@ library Address {
     }
 }
 
-interface IUniswapV2Router02 {
-  function addLiquidityETH(
-  address token,
-  uint amountTokenDesired,
-  uint amountTokenMin,
-  uint amountETHMin,
-  address to,
-  uint deadline
-) external payable returns (uint amountToken, uint amountETH, uint liquidity);
-}
-interface IUniswapV2Factory {
- function getPair(address tokenA, address tokenB) external view returns (address pair);
-}
-interface IUniLockFactory {
-    function fee() external view returns(uint);
-    function uni_router() external view returns(address);
-    function sushi_router() external view returns(address);
-    function toFee() external view returns(uint);
 
-    
 
-    
-}
 
 
 
@@ -401,28 +381,22 @@ interface IUniLockFactory {
 
 
 
- contract uniLock  {
+ contract tokenLock  {
     using Address for address;
     using SafeMath for uint;
     address factory;
-    uint public locked = 0;
-    uint public unlock_date = 0;
     address public owner;
     address public token;
-    uint public softCap;
-    uint public hardCap;
-    uint public start_date;
-    uint public end_date;
-    uint public rate; // coin sale rate 1 ETH = 1 XYZ (rate = 1e18) <=> 1 ETH = 10 XYZ (rate = 1e19) 
-    uint public min_allowed;
-    uint public max_allowed; // Max ETH 
-    uint public collected; // collected ETH
-    uint public pool_rate; // uniswap liquidity pool rate  1 ETH = 1 XYZ (rate = 1e18) <=> 1 ETH = 10 XYZ (rate = 1e19)
-    uint public lock_duration; // duration wished to keep the LP tokens locked
-    uint public uniswap_rate;
-    uint public rnAMM;
+    uint public start_time;
 
-    bool public doRefund = false;
+    
+    
+    struct locking_Data {
+        uint duration;
+        string name;
+        uint amount;
+    }
+    mapping(uint => locking_Data) public tokensLocked;
     constructor() public{
         factory = msg.sender;
         
@@ -434,149 +408,27 @@ interface IUniLockFactory {
     
     mapping(address => uint) participant;
     
-    // Initilaize  a new campaign (can only be triggered by the factory contract)
-    function initilaize(uint[] calldata _data,address _token,address _owner_Address,uint _pool_rate,uint _lock_duration,uint _uniswap_rate,uint _rnAMM) external returns (uint){
+    // Initialize a new campaign (can only be triggered by the factory contract)
+    function initialize(locking_Data[] memory _data,address _token,address _owner_Address) external returns (uint){
       require(msg.sender == factory,'You are not allowed to initialize a new Campaign');
       owner = _owner_Address; 
-      softCap = _data[0];
-      hardCap = _data[1];
-      start_date = _data[2];
-      end_date = _data[3];
-      rate = _data[4]; 
-      min_allowed = _data[5];
-      max_allowed = _data[6];
       token = _token;
-      pool_rate = _pool_rate;
-      lock_duration = _lock_duration;
-      uniswap_rate = _uniswap_rate;
-      rnAMM = _rnAMM;
-    }
-    
-    function buyTokens() public payable returns (uint){
-        require(isLive(),'campaign is not live');
-        require((msg.value>= min_allowed)&& (getGivenAmount(msg.sender).add(msg.value) <= max_allowed) && (msg.value <= getRemaining()),'The contract has insufficent funds or you are not allowed');
-        participant[msg.sender] = participant[msg.sender].add(msg.value);
-        collected = (collected).add(msg.value);
-        return 1;
-    }
-    function withdrawTokens() public returns (uint){
-        require(locked == 1,'liquidity is not yet added');
-        require(IERC20(address(token)).transfer(msg.sender,calculateAmount(participant[msg.sender])),"can't transfer");
-        participant[msg.sender] = 0;
+      start_time = block.timestamp;
+      for(uint i = 0 ; i < _data.length;i++){
+          tokensLocked[i] = _data[i];
+      }
 
     }
-    function unlock(address _LPT,uint _amount) public returns (bool){
-        require(locked == 1 || failed(),'liquidity is not yet locked');
-        require(address(_LPT) != address(token),'You are not allowed to withdraw tokens');
-        require(block.timestamp >= unlock_date ,"can't receive LP tokens");
-        require(msg.sender == owner,'You are not the owner');
-        IERC20(address(_LPT)).transfer(msg.sender,_amount);
+    
+    function withdrawTokens(uint _id,uint _amount) public returns (uint){
+       require(msg.sender == owner,'You are not tokens owner');
+       require((tokensLocked[_id].duration).add(start_time) <= block.timestamp,'You are not allowed to withdraw the tokens yet');
+       require(tokensLocked[_id].amount >= _amount);
+       IERC20(address(token)).transfer(owner,_amount);
+       tokensLocked[_id].amount = (tokensLocked[_id].amount).sub(_amount);
+       return 1;
     }
     
-    // Add liquidity to uniswap and burn the remaining tokens, can be only executed when the campaign completes
-    
-    function uniLOCK() public returns(uint){
-        require(locked ==0,'Liquidity is already locked');
-        require(!isLive(),'Presale is still live');
-        require(!failed(),"Presale failed , can't lock liquidity");
-        require(softCap <= collected,"didn't reach soft cap");
-        require(addLiquidity(),'error adding liquidity to uniswap');
-        locked = 1;
-        unlock_date = (block.timestamp).add(lock_duration);
-        return 1;
-    }
-    
-    function addLiquidity() internal returns(bool){
-        uint campaign_amount = collected.mul(uint(IUniLockFactory(factory).fee())).div(1000);
-        if(rnAMM == 100){
-             if(IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0)){
-        IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
-        if(uniswap_rate > 0){
-                IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
-        }
-        payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
-        payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
-        }else{
-            doRefund = true;
-        }
-        }else if(rnAMM == 0){
-             if(IUniswapV2Factory(address(0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0)){
-        IERC20(address(token)).approve(address(IUniLockFactory(factory).sushi_router()),(hardCap.mul(rate)).div(1e18));
-        if(uniswap_rate > 0){
-                IUniswapV2Router02(address(IUniLockFactory(factory).sushi_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
-        }
-        payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
-        payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
-        }else{
-            doRefund = true;
-        }
-        }else{
-                if(IUniswapV2Factory(address(0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0) && IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) == address(0) ){
-                   IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
-                   IERC20(address(token)).approve(address(IUniLockFactory(factory).sushi_router()),(hardCap.mul(rate)).div(1e18));
-
-                   if(uniswap_rate > 0){
-                       uint total_liq = campaign_amount.mul(uniswap_rate).div(1000);
-                      IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : total_liq.mul(rnAMM).div(100)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
-                      IUniswapV2Router02(address(IUniLockFactory(factory).sushi_router())).addLiquidityETH{value : total_liq.mul(uint(100).sub(rnAMM)).div(100)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
-                    }
-                   payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
-                   payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
-                  
-                  
-                    
-                }else{
-                    doRefund = true;
- 
-                }
-
-            
-        }
-       
-        return true;
-    }
-    
-    // Check whether the campaign failed
-    
-    function failed() public view returns(bool){
-        if((block.timestamp >= end_date) && (softCap > collected)){
-            return true;
-            
-        }
-        return false;
-    }
-    
-    // Allows Participants to withdraw funds when campaign fails
-    function withdrawFunds() public returns(uint){
-        require(failed() || doRefund,"campaign didn't fail");
-        require(participant[msg.sender] >0 ,"You didn't participate in the campaign");
-        uint withdrawAmount = participant[msg.sender].mul(uint(IUniLockFactory(factory).fee())).div(1000);
-        (msg.sender).transfer(withdrawAmount);
-        payable(IUniLockFactory(factory).toFee()).transfer(participant[msg.sender].sub(withdrawAmount));
-        participant[msg.sender] = 0;
-
-    }
-    // Checks whether the campaign is still Live
-    
-    function isLive() public view returns(bool){
-       if((block.timestamp < start_date)) return false;
-       if((block.timestamp >= end_date)) return false;
-       if((collected >= hardCap)) return false;
-       return true;
-    }
-    // Returns amount in XYZ.
-    function calculateAmount(uint _amount) public view returns(uint){
-        return (_amount.mul(rate)).div(1e18);
-        
-    }
-    
-    // Gets remaining ETH to reach hardCap
-    function getRemaining() public view returns (uint){
-        return (hardCap).sub(collected);
-    }
-    function getGivenAmount(address _address) public view returns (uint){
-        return participant[_address];
-    }
     
   
     
