@@ -77,16 +77,19 @@ contract uniLockFactory  {
     address factory_owner;
     address public unl_address;
     address public uni_router;
+    address public sushi_router;
+
     uint balance_required;
 
     
-    constructor(address _UNL,uint min_balance,uint _fee,address _uniRouter) public {
+    constructor(address _UNL,uint min_balance,uint _fee,address _uniRouter,address _sushiRouter) public {
         factory_owner = msg.sender;
         toFee = msg.sender;
         unl_address = _UNL;
         balance_required = min_balance;
         fee = _fee;
         uni_router = _uniRouter;
+        sushi_router = _sushiRouter;
     }
     modifier only_factory_Owner(){
         require(factory_owner == msg.sender,'You are not the owner');
@@ -94,7 +97,7 @@ contract uniLockFactory  {
     }
     //   1 ETH = 1 XYZ (_pool_rate = 1e18) <=> 1 ETH = 10 XYZ (_pool_rate = 1e19) <=> XYZ (decimals = 18)
    // _data = _softCap,_hardCap,_start_date, _end_date,_rate,_min_allowed,_max_allowed
-    function createCampaign(uint[] memory _data,address _token,uint _pool_rate,uint _lock_duration,uint _uniswap_rate) public returns (address campaign_address){
+    function createCampaign(uint[] memory _data,address _token,uint _pool_rate,uint _lock_duration,uint _uniswap_rate,uint _rnAMM) public returns (address campaign_address){
      require(IERC20(address(unl_address)).balanceOf(msg.sender) >= uint(balance_required),"You don't have the minimum UNL tokens required to launch a campaign");
      require(_data[0] < _data[1],"Error :  soft cap can't be higher than hard cap" );
      require(_data[2] < _data[3] ,"Error :  start date can't be higher than end date " );
@@ -107,13 +110,13 @@ contract uniLockFactory  {
      assembly {
             campaign_address := create2(0, add(bytecode, 32), mload(bytecode), salt)
      }
-     uniLock(campaign_address).initilaize(_data,_token,msg.sender,_pool_rate,_lock_duration,_uniswap_rate);
+     uniLock(campaign_address).initilaize(_data,_token,msg.sender,_pool_rate,_lock_duration,_uniswap_rate,_rnAMM);
      campaigns.push(campaign_address);
      require(transferToCampaign(_data[1],_data[4],_pool_rate,_token,campaign_address,_uniswap_rate),"unable to transfer funds");
      return campaign_address;
     }
     function transferToCampaign(uint _data1,uint _data4,uint _pool_rate,address _token,address _campaign_address,uint _uniswap_rate ) internal returns(bool){
-        require(ApproveTransferTo((_data1.mul(_data4).div(1e18)),_uniswap_rate,_data1,_token,_campaign_address,_pool_rate));
+       require(ApproveTransferTo((_data1.mul(_data4).div(1e18)),_uniswap_rate,_data1,_token,_campaign_address,_pool_rate));
 /*     require(IERC20(address(_token)).transferFrom(msg.sender,address(_campaign_address),(_data1.mul(_data4).div(1e18)).add((_data1).mul(_pool_rate).div(1e18))),"unable to transfer token amount to the campaign");
 */     return true;
     }
