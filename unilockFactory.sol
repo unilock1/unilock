@@ -126,12 +126,13 @@ contract uniLockFactory  {
      return true;
     }
     
-   function changeConfig(uint _fee,address _to,uint _balance_required,address _uni_router,address _unl_address) public only_factory_Owner returns(uint){
+   function changeConfig(uint _fee,address _to,uint _balance_required,address _uni_router,address _unl_address,address _sushi_router) public only_factory_Owner returns(uint){
         fee = _fee;
         toFee = _to;
         balance_required = _balance_required;
         uni_router = _uni_router;
         unl_address = _unl_address;
+        sushi_router = _sushi_router;
     }
 
 
