@@ -362,9 +362,18 @@ interface IUniswapV2Factory {
 }
 interface IUniLockFactory {
     function fee() external view returns(uint);
+    function unl_address() external view returns(address);
     function uni_router() external view returns(address);
     function sushi_router() external view returns(address);
     function toFee() external view returns(uint);
+    function balance_required() external view returns(uint);
+    function high_tier() external view returns(uint);
+    function medium_tier() external view returns(uint);
+    function low_tier() external view returns(uint);
+
+
+
+
 
     
 
@@ -453,8 +462,18 @@ interface IUniLockFactory {
     }
     
     function buyTokens() public payable returns (uint){
-        require(isLive(),'campaign is not live');
         require((msg.value>= min_allowed)&& (getGivenAmount(msg.sender).add(msg.value) <= max_allowed) && (msg.value <= getRemaining()),'The contract has insufficent funds or you are not allowed');
+        if(IERC20(IUniLockFactory(factory).unl_address()).balanceOf(msg.sender) >= IUniLockFactory(factory).balance_required()){
+            
+            require(end_date > block.timestamp,'Presale Ended');
+            require(hardCap > collected,'Presale Ended');
+            
+        }else{
+            
+            require(isLive(),'campaign is not live');
+            
+        }
+        if(getGivenAmount(msg.sender).add(msg.value) > max_allowed.mul(checkTier(msg.sender)).div(100)) revert();
         participant[msg.sender] = participant[msg.sender].add(msg.value);
         collected = (collected).add(msg.value);
         return 1;
@@ -577,7 +596,19 @@ interface IUniLockFactory {
     function getGivenAmount(address _address) public view returns (uint){
         return participant[_address];
     }
-    
+    function checkTier(address _address) public view returns(uint){
+        uint amount = IERC20(IUniLockFactory(factory).unl_address()).balanceOf(_address) ;
+        if(amount >= IUniLockFactory(factory).high_tier()){
+            return 100;
+        }else if(amount >= IUniLockFactory(factory).medium_tier()){
+            return 80;
+        }else if(amount >= IUniLockFactory(factory).low_tier()){
+            return 60;
+        }else{
+            return 40;
+        }
+    }
+
   
     
 
