@@ -414,9 +414,6 @@ library Address {
         
        
     }
-    function calculate() public returns(uint){
-        
-    }
 
   
     
