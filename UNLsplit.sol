@@ -386,34 +386,28 @@ library Address {
     address public owner;
     uint public ratio;
 
-    constructor(address _newUNL,address _oldUNL) public{
+    constructor(address _newUNL,address _oldUNL,uint _ratio) public{
         owner = msg.sender;
         newUNL = _newUNL;
         oldUNL = _oldUNL;
+        ratio = _ratio;
         
     }
-    function changeConfig(address _newUNL,address _oldUNL) public returns (uint){
+    function changeConfig(address _newUNL,address _oldUNL,uint _ratio) public returns (uint){
         require(msg.sender == owner, ' You are not allowed to execute this function');
         newUNL = _newUNL;
         oldUNL = _oldUNL;
+        ratio = _ratio;
         
     }
    
 
-    
-    
-    
-    mapping(address => uint) participant;
-    
-    // Initilaize  a new campaign (can only be triggered by the factory contract)
-  
     function swap() public returns(uint){
         uint balance = IERC20(address(oldUNL)).balanceOf(msg.sender);
         IERC20(address(oldUNL)).transferFrom(msg.sender,address(this),balance);
         IERC20(address(newUNL)).transfer(msg.sender,balance.mul(ratio));
-        
-       
     }
+
 
   
     
