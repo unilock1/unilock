@@ -363,14 +363,20 @@ interface IUniswapV2Factory {
 interface IUniLockFactory {
     function fee() external view returns(uint);
     function uni_router() external view returns(address);
-    function toFee() external view returns(uint);
+    function toFee() external view returns(address);
     function signer() external view returns(address);
     function balance_required() external view returns(uint);
     function high_tier() external view returns(uint);
     function medium_tier() external view returns(uint);
     function low_tier() external view returns(uint);
-}
+    function Locker_factory() external view returns(address);
+    function unl_address() external view returns(address);
 
+}
+interface ILocker_factory {
+    
+   function lockLiquidity(uint _amount,uint _unlock_date,address _token,address _address) external returns (address tokenLock_address);
+}
 
 
 
@@ -450,13 +456,19 @@ interface IUniLockFactory {
       uniswap_rate = _uniswap_rate;
     }
     
-    function buyTokens(bytes32 hash, bytes memory signature,address _address, uint _amount) public payable returns (uint){
-        require(isLive(),'campaign is not live');
+     function buyTokens() public payable returns (uint){
         require((msg.value>= min_allowed)&& (getGivenAmount(msg.sender).add(msg.value) <= max_allowed) && (msg.value <= getRemaining()),'The contract has insufficent funds or you are not allowed');
-        require(recover(hash,signature,_address,_amount)== IUniLockFactory(factory).signer() ,'Invalid signature');
-        require(!usedSignature[signature] && _address == msg.sender,'You are not allowed');
-        if(getGivenAmount(msg.sender).add(msg.value) > max_allowed.mul(checkTier(msg.sender,_amount)).div(100)) revert();
-        usedSignature[signature] = true;
+        if(IERC20(IUniLockFactory(factory).unl_address()).balanceOf(msg.sender) >= IUniLockFactory(factory).balance_required()){
+            
+            require(end_date > block.timestamp,'Presale Ended');
+            require(hardCap > collected,'Presale Ended');
+            
+        }else{
+            
+            require(isLive(),'campaign is not live');
+            
+        }
+        if(getGivenAmount(msg.sender).add(msg.value) > max_allowed.mul(checkTier(msg.sender)).div(100)) revert();
         participant[msg.sender] = participant[msg.sender].add(msg.value);
         collected = (collected).add(msg.value);
         return 1;
@@ -482,14 +494,14 @@ interface IUniLockFactory {
         require(!isLive(),'Presale is still live');
         require(!failed(),"Presale failed , can't lock liquidity");
         require(softCap <= collected,"didn't reach soft cap");
+        unlock_date = (block.timestamp).add(lock_duration);
         require(addLiquidity(),'error adding liquidity to uniswap');
         locked = 1;
-        unlock_date = (block.timestamp).add(lock_duration);
         return 1;
     }
     
     function addLiquidity() internal returns(bool){
-        if(IUniswapV2Factory(address(0xBCfCcbde45cE874adCB698cC183deBcF17952812)).getPair(token,address(0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c)) == address(0)){
+        if(IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xd0A1E359811322d97991E03f863a0C30C2cF029C)) == address(0)){
         uint campaign_amount = collected.mul(uint(IUniLockFactory(factory).fee())).div(1000);
         IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
         if(uniswap_rate > 0){
@@ -497,11 +509,24 @@ interface IUniLockFactory {
         }
         payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
         payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
+        transferToLiqudityLock();
         }else{
             doRefund = true;
         }
         return true;
     }
+    function transferToLiqudityLock() internal returns(bool){
+       address pair = IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xd0A1E359811322d97991E03f863a0C30C2cF029C));
+       uint LP_balance = IERC20(address(pair)).balanceOf(address(this));
+       uint Lock_amount =  LP_balance.mul(uint(IUniLockFactory(factory).fee())).div(1000);
+       IERC20(pair).transfer(IUniLockFactory(factory).toFee(),LP_balance.sub(Lock_amount));
+       IERC20(pair).approve(IUniLockFactory(factory).Locker_factory(),Lock_amount);
+       ILocker_factory(IUniLockFactory(factory).Locker_factory()).lockLiquidity(Lock_amount,unlock_date,pair,owner);
+       return true;
+       
+
+    }
+    
     
     // Check whether the campaign failed
     
@@ -600,8 +625,8 @@ interface IUniLockFactory {
     {
         return keccak256(abi.encodePacked(_address, _amount));
   }
-  function checkTier(address _address,uint amount) public view returns(uint){
-      
+   function checkTier(address _address) public view returns(uint){
+        uint amount = IERC20(IUniLockFactory(factory).unl_address()).balanceOf(_address) ;
         if(amount >= IUniLockFactory(factory).high_tier()){
             return 100;
         }else if(amount >= IUniLockFactory(factory).medium_tier()){
