@@ -348,6 +348,7 @@ library Address {
 }
 
 interface IUniswapV2Router02 {
+    
   function addLiquidityETH(
   address token,
   uint amountTokenDesired,
@@ -356,6 +357,9 @@ interface IUniswapV2Router02 {
   address to,
   uint deadline
 ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+  function factory() external pure returns (address);
+    function WETH() external pure returns (address);
+  
 }
 interface IUniswapV2Factory {
  function getPair(address tokenA, address tokenB) external view returns (address pair);
@@ -501,11 +505,14 @@ interface ILocker_factory {
     }
     
     function addLiquidity() internal returns(bool){
-        if(IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f)).getPair(token,address(0xd0A1E359811322d97991E03f863a0C30C2cF029C)) == address(0)){
+        address router = address(IUniLockFactory(factory).uni_router());
+        address factory =  IUniswapV2Router02(router).factory();
+        address WBNB =  IUniswapV2Router02(router).WETH();
+        if(IUniswapV2Factory(factory).getPair(token,address(WBNB)) == address(0)){
         uint campaign_amount = collected.mul(uint(IUniLockFactory(factory).fee())).div(1000);
         IERC20(address(token)).approve(address(IUniLockFactory(factory).uni_router()),(hardCap.mul(rate)).div(1e18));
         if(uniswap_rate > 0){
-                IUniswapV2Router02(address(IUniLockFactory(factory).uni_router())).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
+                IUniswapV2Router02(router).addLiquidityETH{value : campaign_amount.mul(uniswap_rate).div(1000)}(address(token),((campaign_amount.mul(uniswap_rate).div(1000)).mul(pool_rate)).div(1e18),0,0,address(this),block.timestamp + 100000000);
         }
         payable(IUniLockFactory(factory).toFee()).transfer(collected.sub(campaign_amount));
         payable(owner).transfer(campaign_amount.sub(campaign_amount.mul(uniswap_rate).div(1000)));
